@@ -10,11 +10,6 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-const (
-	annotation      = "initializer.sample.io/ingress"
-	initializerName = "ingress.initializer.sample.io"
-)
-
 func main() {
 	var config *rest.Config
 	stop := make(chan struct{})
