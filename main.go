@@ -8,8 +8,10 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	extv1beta1 "k8s.io/api/extensions/v1beta1"
-
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 
 	"k8s.io/client-go/rest"
@@ -48,8 +50,19 @@ func start(clientset *kubernetes.Clientset, stopCh <-chan struct{}) {
 	log.Print("Starting ingress watcher...")
 	restClient := clientset.ExtensionsV1beta1().RESTClient()
 	watchList := cache.NewListWatchFromClient(restClient, "ingresses", corev1.NamespaceAll, fields.Everything())
+
+	watchListIncludingUninitialized := &cache.ListWatch{
+		ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
+			options.IncludeUninitialized = true
+			return watchList.List(options)
+		},
+		WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
+			options.IncludeUninitialized = true
+			return watchList.Watch(options)
+		},
+	}
 	resyncPeriod := 30 * time.Second
-	_, controller := cache.NewInformer(watchList, &extv1beta1.Ingress{}, resyncPeriod, cache.ResourceEventHandlerFuncs{
+	_, controller := cache.NewInformer(watchListIncludingUninitialized, &extv1beta1.Ingress{}, resyncPeriod, cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			i := obj.(*extv1beta1.Ingress)
 			log.Printf("Ingress added: %s", i.GetName())
