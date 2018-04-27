@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ingress-config
+data:
+  config: |
+    dns:
+      domain: sample.com
+      defaultCName: test.sample.com
+    azure:
+      tenant: 46311e28-0b2f-4c90-85kc-da82f01geeb7
+      subscription: 4d1fp17-512d-4z6-8d15-f1e654de5b78
+      resourceGroup: Stuff
+      secret: dns-secret 

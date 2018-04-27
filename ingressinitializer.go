@@ -3,7 +3,11 @@ package main
 import (
 	"encoding/json"
 	"log"
+	"strings"
 
+	"github.com/frodehus/dnsinit/config"
+	"github.com/frodehus/dnsinit/dns"
+	"github.com/ghodss/yaml"
 	extv1beta1 "k8s.io/api/extensions/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -14,7 +18,11 @@ import (
 
 //IngressInitializer handles creation/updates of DNS record sets matching the configured hosts in the Ingress
 type IngressInitializer struct {
-	kubeclient kubernetes.Interface
+	kubeclient       kubernetes.Interface
+	config           config.DnsInitializerConfig
+	dnsClient        dns.DNSClient
+	servicePrincipal string
+	clientSecret     string
 }
 
 const (
@@ -27,14 +35,25 @@ func NewIngressInitializer(clientset kubernetes.Interface) (*IngressInitializer,
 	initializer := &IngressInitializer{
 		kubeclient: clientset,
 	}
+
+	initializer.configure()
 	return initializer, nil
 }
 
 //Create will check if a DNS record set exists for the Ingress - creates new as necessary
 func (i *IngressInitializer) Create(ingress *extv1beta1.Ingress) error {
-	_, err := i.initialize(ingress)
+	ingress, err := i.initialize(ingress)
 	if err != nil {
 		return err
+	}
+
+	if ingress == nil {
+		return nil
+	}
+
+	for _, rule := range ingress.Spec.Rules {
+		hostname := rule.Host[:strings.Index(rule.Host, ".")]
+		i.dnsClient.LookupRecord(hostname)
 	}
 	return nil
 }
@@ -54,6 +73,27 @@ func (i *IngressInitializer) Delete(ingress *extv1beta1.Ingress) error {
 	return nil
 }
 
+func (i *IngressInitializer) configure() {
+	cm, err := i.kubeclient.CoreV1().ConfigMaps("default").Get("ingress-config", metav1.GetOptions{})
+	if err != nil {
+		log.Fatalf("Unable to load config from 'ingress-config': %s", err.Error())
+		panic("Failed to load configuration")
+	}
+	var initializerConfig config.DnsInitializerConfig
+	err = yaml.Unmarshal([]byte(cm.Data["config"]), &initializerConfig)
+	if err != nil {
+		log.Fatalf("Unable to parse YAML config from 'ingress-config': %s", err.Error())
+		panic("Failed to load configuration")
+	}
+	secret, err := i.kubeclient.CoreV1().Secrets("default").Get(initializerConfig.Azure.Secret, metav1.GetOptions{})
+	i.servicePrincipal = string(secret.Data["servicePrincipal"])
+	i.clientSecret = string(secret.Data["secret"])
+	i.config = initializerConfig
+
+	i.dnsClient, _ = dns.NewDNSClient(i.servicePrincipal, i.clientSecret, i.config.Azure)
+
+}
+
 func (i *IngressInitializer) initialize(ingress *extv1beta1.Ingress) (*extv1beta1.Ingress, error) {
 	initializedIngress := ingress.DeepCopy()
 
@@ -66,7 +106,7 @@ func (i *IngressInitializer) initialize(ingress *extv1beta1.Ingress) (*extv1beta
 	defer i.saveIngress(ingress, initializedIngress)
 
 	if !i.hasRequiredAnnotation(initializedIngress) {
-		return initializedIngress, nil
+		return nil, nil
 	}
 	log.Printf("\tInitializing %s", initializedIngress.GetName())
 	i.setAnnotations(initializedIngress)
@@ -97,9 +137,7 @@ func (i *IngressInitializer) hasRequiredAnnotation(ingress *extv1beta1.Ingress) 
 }
 
 func (i *IngressInitializer) setAnnotations(ingress *extv1beta1.Ingress) {
-	annotations := ingress.ObjectMeta.GetAnnotations()
-	annotations["test"] = "test"
-	ingress.ObjectMeta.SetAnnotations(annotations)
+	ingress.ObjectMeta.Annotations["ingress.sample.io"] = "mutillidae.pepperprovesapoint.com"
 }
 
 func (i *IngressInitializer) getPendingInitializers(ingress *extv1beta1.Ingress) []metav1.Initializer {
