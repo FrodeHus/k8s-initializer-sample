@@ -5,10 +5,10 @@ metadata:
 data:
   config: |
     dns:
-      domain: pepperprovesapoint.com
-      defaultCName: home.pepperprovesapoint.com
+      domain: sample.com
+      defaultCName: test.sample.com
     azure:
-      tenant: 46321e28-0b3f-4c90-855c-dc82f009eeb7
-      subscription: 4d1c770c-574d-4746-8d25-f1e68fde5b78
+      tenant: 46ae1e28-01d3f-1290-8cdc-4c82fc9ee01
+      subscription: 4d1b170c-574d-4746-3d25-f1e61fee5c33
       resourceGroup: Common
       secret: dns-secret 
