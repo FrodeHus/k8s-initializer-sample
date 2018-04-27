@@ -90,7 +90,7 @@ func (i *IngressInitializer) configure() {
 	i.clientSecret = string(secret.Data["secret"])
 	i.config = initializerConfig
 
-	i.dnsClient, _ = dns.NewDNSClient(i.servicePrincipal, i.clientSecret, i.config.Azure)
+	i.dnsClient, _ = dns.NewDNSClient(i.servicePrincipal, i.clientSecret, i.config.Azure, i.config.Dns)
 
 }
 

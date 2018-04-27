@@ -1,3 +1,2 @@
 *.lock
-*secret.yaml
 vendor/
