@@ -13,20 +13,18 @@ import (
 )
 
 type AzureDNS struct {
-	TenantId       string `json:"tenant_id" envconfig:"AZURE_TENANT_ID" form:"azure_tenant_id"`
-	SubscriptionId string `json:"subscription_id" envconfig:"AZURE_SUBSCRIPTION_ID" form:"azure_subscription_id"`
-	ClientId       string `json:"client_id" envconfig:"AZURE_CLIENT_ID" form:"azure_client_id"`
-	ClientSecret   string `json:"client_secret" envconfig:"AZURE_CLIENT_SECRET" form:"azure_client_secret"`
-	ResourceGroup  string `json:"resource_group" envconfig:"AZURE_RESOURCE_GROUP" form:"azure_resource_group"`
+	ClientId     string
+	ClientSecret string
+	AzureConfig  config.AzureConfig
+	DnsConfig    config.DnsConfig
 }
 
-func NewDNSClient(servicePrincipal string, clientSecret string, azureConfig config.AzureConfig) (*AzureDNS, error) {
+func NewDNSClient(servicePrincipal string, clientSecret string, azureConfig config.AzureConfig, dnsConfig config.DnsConfig) (*AzureDNS, error) {
 	azuredns := &AzureDNS{
-		ClientId:       servicePrincipal,
-		ClientSecret:   clientSecret,
-		TenantId:       azureConfig.Tenant,
-		SubscriptionId: azureConfig.Subscription,
-		ResourceGroup:  azureConfig.ResourceGroup,
+		ClientId:     servicePrincipal,
+		ClientSecret: clientSecret,
+		AzureConfig:  azureConfig,
+		DnsConfig:    dnsConfig,
 	}
 
 	return azuredns, nil
@@ -34,24 +32,24 @@ func NewDNSClient(servicePrincipal string, clientSecret string, azureConfig conf
 
 func (d *AzureDNS) LookupRecord(recordName string) (*string, error) {
 	glog.Infof("Retrieving record %s from Azure DNS", recordName)
-	cname := "staas.ukwest.cloudapp.azure.com"
-	token, err := auth.NewServicePrincipalTokenFromCredentials(azure.PublicCloud.ResourceManagerEndpoint, d.TenantId, d.ClientId, d.ClientSecret)
+	cname := d.DnsConfig.DefaultCName
+	token, err := auth.NewServicePrincipalTokenFromCredentials(azure.PublicCloud.ResourceManagerEndpoint, d.AzureConfig.Tenant, d.ClientId, d.ClientSecret)
 	if err != nil {
 		return nil, err
 	}
-	rsc := dns.NewRecordSetsClient(d.SubscriptionId)
+	rsc := dns.NewRecordSetsClient(d.AzureConfig.Subscription)
 	rsc.Authorizer = autorest.NewBearerAuthorizer(token)
 	recordType := dns.RecordType("CNAME")
 	newRecord := dns.RecordSet{
 		Name: &recordName,
 		RecordSetProperties: &dns.RecordSetProperties{
 			TTL: to.Int64Ptr(300),
-			CNAMERecord: &dns.CnameRecord{
+			CnameRecord: &dns.CnameRecord{
 				Cname: &cname,
 			},
 		},
 	}
-	recordSet, err := rsc.CreateOrUpdate(d.ResourceGroup, "pepperprovesapoint.com", recordName, recordType, newRecord, "", "")
+	recordSet, err := rsc.CreateOrUpdate(d.AzureConfig.ResourceGroup, d.DnsConfig.Domain, recordName, recordType, newRecord, "", "")
 	if err != nil {
 		fmt.Printf("Error retrieving record set: %s", err.Error())
 		return nil, err
